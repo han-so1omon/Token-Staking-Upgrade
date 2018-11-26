@@ -14,7 +14,10 @@ if eosBuild == '' or eosBuild == None:
             'EOS_BUILD environment variable must be set')
 
 BOID_STAKE_CONTRACT_PATH = \
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
+    os.path.abspath(
+        os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            os.pardir))
 
 TEST_BOIDPOWER_CONTRACT_PATH = \
     os.path.join(os.path.dirname(os.path.abspath(__file__)), 'src')
@@ -38,18 +41,6 @@ def getStakeParams(x):
              'boidpower': x.json['rows'][i]['boidpower'],
              'escrow': x.json['rows'][i]['escrow']}
     return ret
-
-# TODO: the file paths are different for unknown reasons
-def contract_built(contract_path, contract_name):
-    base_path = os.path.join(contract_path, 'build', contract_name)
-    # print(base_path)
-    abi_exists = os.path.exists(base_path+'.abi')
-    # print(abi_exists)
-    wast_exists = os.path.exists(base_path+'.wast')
-    # print(wast_exists)
-    wasm_exists = os.path.exists(base_path+'.wasm')
-    # print(wasm_exists)
-    return abi_exists and wast_exists and wasm_exists
 
 '''
     args:
@@ -131,8 +122,15 @@ if __name__ == '__main__':
     testBoidpower_c = eosf.Contract(
         boid_power, TEST_BOIDPOWER_CONTRACT_PATH)
 
+    # make a build directory if it doesn't exist 
+    repo_build_dir = os.path.join(BOID_STAKE_CONTRACT_PATH, 'build')
+    if not os.path.exists(repo_build_dir):
+        os.mkdir(repo_build_dir)
+        args.build = True  # set to True because nothing has been built yet
+
     # build the token staking contract
     if args.build:
+        print('building contracts')
         eosioToken_c.build()
         boidStake_c.build()
         testBoidpower_c.build()
@@ -215,9 +213,9 @@ if __name__ == '__main__':
             'boidpower': '10000'
         }, [acct2])
 
-    print(testBoidpower_c)
-    eosf.stop()
-    sys.exit()
+    # print(type(testBoidpower_c))
+    # eosf.stop()
+    # sys.exit()
 
     # Initialize boid staking contract
     boidStake_c.push_action(
@@ -226,6 +224,7 @@ if __name__ == '__main__':
             'issuer': boid,
             'maximum_supply': '1000000000.0000 BOID'
         }, [boid_stake])
+
     # TODO find way to print total number of boid tokens
     # to determine if this function above is minting more coins
     # or if its alocating pre-existing coins
@@ -234,6 +233,7 @@ if __name__ == '__main__':
         {
             'on_switch': '1',
         }, [boid_stake])
+
     # initstats - reset/setup configuration of contract
     boidStake_c.push_action(
         'initstats',   
