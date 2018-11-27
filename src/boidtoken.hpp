@@ -76,7 +76,7 @@ class boidtoken : public contract
      *    -- Token type must be same as type to-be-staked via this contract
      */
     // @abi action
-    void stake (account_name _stake_account, uint8_t  _stake_period, asset _staked ) ;
+    void stake(account_name _stake_account, uint8_t  _stake_period, asset _staked ) ;
 
     /** \brief Claim token-staking bonus for specified account
      */
@@ -89,7 +89,7 @@ class boidtoken : public contract
      *  - Deduct staked amount from contract config table
      */
     // @abi action
-    void unstake (const account_name _stake_account);
+    void unstake(const account_name _stake_account);
 
 
     /** \brief Check result of running payout
@@ -102,7 +102,7 @@ class boidtoken : public contract
     /** \brief Add bonus to config table
      */
     // @abi action
-    void addbonus (account_name _sender, asset _bonus);
+    void addbonus(account_name _sender, asset _bonus);
 
     /** \brief Transfer unclaimed bonus to overflow account
      */
@@ -122,7 +122,7 @@ class boidtoken : public contract
     /** \brief Request new boidpower from boidpower contract
      */
     // @abi action
-    void reqnewbp();
+    void reqnewbp(account_name account_were_requesting_bp_from);
 
     /** \brief Set new boidpower
      *
@@ -302,5 +302,5 @@ asset boidtoken::get_balance(account_name owner, symbol_name sym) const
     return ac.balance;
 }
 
-EOSIO_ABI( boidtoken,(create)(issue)(transfer)(setoverflow)(running)(stake)(claim)(unstake)(checkrun)(addbonus)(rembonus)(runpayout)(initstats)(reqnewbp)(setnewbp)(printstake)(printbpow))
+EOSIO_ABI(boidtoken,(create)(issue)(transfer)(setoverflow)(running)(stake)(claim)(unstake)(checkrun)(addbonus)(rembonus)(runpayout)(initstats)(reqnewbp)(setnewbp)(printstake)(printbpow))
 //EOSIO_DISPATCH( boidtoken,(create)(issue)(transfer)(setoverflow)(running)(stake)(claim)(unstake)(checkrun)(addbonus)(rembonus)(runpayout)(initstats)(reqnewbp)(setnewbp)(printstake))

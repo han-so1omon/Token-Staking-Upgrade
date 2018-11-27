@@ -85,6 +85,7 @@ def getStakeType(acct):
 
 if __name__ == '__main__':
 
+    # parse arguments passed when this script is run
     parser = argparse.ArgumentParser()
     parser.add_argument("-b","--build", action="store_true",
                         help="build new contract abis")
@@ -130,7 +131,6 @@ if __name__ == '__main__':
 
     # build the token staking contract
     if args.build:
-        print('building contracts')
         eosioToken_c.build()
         boidStake_c.build()
         testBoidpower_c.build()
@@ -282,7 +282,9 @@ if __name__ == '__main__':
 
     boidStake_c.push_action(
         'reqnewbp',
-        {}, [boid_stake])
+        {
+            'account_were_requesting_bp_from': boid_power
+        }, [boid_stake])
 
     #print(getStakeParams(boidStake_c.table('stakes',boid_stake)))
 
