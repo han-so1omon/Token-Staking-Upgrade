@@ -280,6 +280,8 @@ if __name__ == '__main__':
     print(getBalance(boidStake_c.table("accounts", acct1)))
     print(getBalance(boidStake_c.table("accounts", acct2)))
 
+    boid_stake.info()
+    input()
     boidStake_c.push_action(
         'reqnewbp',
         {
