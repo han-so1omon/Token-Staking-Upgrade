@@ -3,12 +3,14 @@ import sys
 import os
 import json
 import argparse
+import subprocess
+import eosfactory.core.cleos as cleos
 
 
 # TODO: find a better way to reference the eos/contracts/eosio.token
 #eosBuild = os.getenv('EOS_BUILD')
 eosBuild = os.getenv('EOS_SRC')
-EOS_TOKEN_CONTRACT_PATH = eosBuild + '/contracts/eosio.token'
+EOS_TOKEN_CONTRACT_PATH = os.path.join(eosBuild, 'contracts', 'eosio.token')
 if eosBuild == '' or eosBuild == None:
     raise ValueError(
             'EOS_BUILD environment variable must be set')
@@ -93,6 +95,8 @@ if __name__ == '__main__':
 
     # start single-node local testnet
     eosf.reset()
+
+    eosf.create_wallet()
 
     # create master account from which
     # other account can be created
@@ -280,12 +284,57 @@ if __name__ == '__main__':
     print(getBalance(boidStake_c.table("accounts", acct1)))
     print(getBalance(boidStake_c.table("accounts", acct2)))
 
+    # print('before')
+    # cleos_command = f'cleos get account {boid_stake.name}'
+    # subprocess.run(cleos_command, shell=True, check=True)
+    print('111111111111111')
     boid_stake.info()
+    cleos_command = \
+        f'cleos set account permission {boid_stake.name} active \'{{' + \
+        '"threshold": 1,' + \
+        '"keys": [{' + \
+            f'"key": "{boid_stake.active_key.key_public}",' + \
+            '"weight": 1}],' + \
+        '"accounts": [{' + \
+            '"permission":{' + \
+                f'"actor":"{boid_stake.name}",' + \
+                '"permission":"eosio.code"},' + \
+            '"weight":1}]}\' ' + \
+        f'"owner" -p {boid_stake.name}'
+    print(cleos_command)
+
+    # subprocess.run() doc:
+    # https://docs.python.org/3.5/library/subprocess.html#subprocess.run
+    subprocess.run(cleos_command, shell=True, check=True)
+    # print('after')
+    # cleos_command = f'cleos get account {boid_stake.name}'
+    # subprocess.run(cleos_command, shell=True, check=True)
+    # subprocess.run('cleos get accounts', shell=True, check=True)
+    print('222222222222')
+    boid_stake.info()
+    # print('----------------')
+    # print(boid_stake.owner_key)
+    # print(boid_stake.owner_key.key_private)
+    # print('----------------')
+    # print(boid_stake.active_key)
+    # print(boid_stake.active_key.key_private)
+    # # private_keys = eosf.get_wallet().keys()
+    # print('----------------')
+
+    # cleos.WalletKeys()
+    # print('----------------')
+
+
+    # input()
+    # cleos_command = \
+    #     f'cleos set action permission {boid_stake.name} {boid_power.name} setnewbp active'
+    # subprocess.run(cleos_command, shell=True, check=True)
+
     input()
     boidStake_c.push_action(
         'reqnewbp',
         {
-            'account_were_requesting_bp_from': boid_power
+            'contract_were_requesting_bp_from': boid_power
         }, [boid_stake])
 
     #print(getStakeParams(boidStake_c.table('stakes',boid_stake)))

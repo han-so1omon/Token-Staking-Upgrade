@@ -17,6 +17,13 @@ fix permissions bug:
 	summary:
 		explaination of what the permissions should look like
 
+	Possible solutions:
+
+		figure out how to run arbitrary os commands in the python script and run the cleos command from there
+
+		see if that dude online finished his pull request for a solution
+
+		continue with erics shell script if none of these work
 
 
 Go to the file local_test.py in Token-Staking-Upgrade/tests/, starting on line 83 you'll see comments:

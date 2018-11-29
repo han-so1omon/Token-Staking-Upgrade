@@ -122,7 +122,7 @@ class boidtoken : public contract
     /** \brief Request new boidpower from boidpower contract
      */
     // @abi action
-    void reqnewbp(account_name account_were_requesting_bp_from);
+    void reqnewbp(account_name contract_were_requesting_bp_from);
 
     /** \brief Set new boidpower
      *
