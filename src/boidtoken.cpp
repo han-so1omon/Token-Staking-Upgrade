@@ -576,17 +576,19 @@ void boidtoken::initstats(){
 //    get their boidpower
 //    put that boidpower into the accounts table
 // test by verifying that the table was updated properly
-void boidtoken::reqnewbp() {
+void boidtoken::reqnewbp(account_name contract_were_requesting_bp_from) {
   require_auth(_self);
 
   stake_table s_t(_self, _self);
   for (auto itr = s_t.begin(); itr != s_t.end(); itr++) {
-    //SEND_INLINE_ACTION(*this, transfer, {st.issuer, N(active)}, {st.issuer, to, quantity, memo});
-    print("herere\n");
+    // SEND_INLINE_ACTION(*this, transfer, {st.issuer, N(active)}, {st.issuer, to, quantity, memo});
+    // print("herere\n");
+    print("aaa");
     action(
-        permission_level{get_self(),N("active")},
-        N("boid.power"),
-        N("sndnewbp"),
+        permission_level{get_self(), N(active)},
+        // permission_level{get_self(), N(eosio.token)},
+        contract_were_requesting_bp_from,
+        N(sndnewbp),
         std::make_tuple(itr->stake_account)
     ).send();
   }
@@ -595,7 +597,7 @@ void boidtoken::reqnewbp() {
 void boidtoken::setnewbp(account_name bp,
                          account_name acct,
                          uint32_t boidpower) {
-  require_auth(N("boid.power"));
+  require_auth(N(boid.power));
   stake_table s_t(_self, _self);
   auto itr = s_t.find(acct);
   if (itr != s_t.end()) {

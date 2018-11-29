@@ -3,18 +3,23 @@ import sys
 import os
 import json
 import argparse
+import subprocess
+import eosfactory.core.cleos as cleos
 
 
 # TODO: find a better way to reference the eos/contracts/eosio.token
 #eosBuild = os.getenv('EOS_BUILD')
 eosBuild = os.getenv('EOS_SRC')
-EOS_TOKEN_CONTRACT_PATH = eosBuild + '/contracts/eosio.token'
+EOS_TOKEN_CONTRACT_PATH = os.path.join(eosBuild, 'contracts', 'eosio.token')
 if eosBuild == '' or eosBuild == None:
     raise ValueError(
             'EOS_BUILD environment variable must be set')
 
 BOID_STAKE_CONTRACT_PATH = \
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
+    os.path.abspath(
+        os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            os.pardir))
 
 TEST_BOIDPOWER_CONTRACT_PATH = \
     os.path.join(os.path.dirname(os.path.abspath(__file__)), 'src')
@@ -38,18 +43,6 @@ def getStakeParams(x):
              'boidpower': x.json['rows'][i]['boidpower'],
              'escrow': x.json['rows'][i]['escrow']}
     return ret
-
-# TODO: the file paths are different for unknown reasons
-def contract_built(contract_path, contract_name):
-    base_path = os.path.join(contract_path, 'build', contract_name)
-    # print(base_path)
-    abi_exists = os.path.exists(base_path+'.abi')
-    # print(abi_exists)
-    wast_exists = os.path.exists(base_path+'.wast')
-    # print(wast_exists)
-    wasm_exists = os.path.exists(base_path+'.wasm')
-    # print(wasm_exists)
-    return abi_exists and wast_exists and wasm_exists
 
 '''
     args:
@@ -94,6 +87,7 @@ def getStakeType(acct):
 
 if __name__ == '__main__':
 
+    # parse arguments passed when this script is run
     parser = argparse.ArgumentParser()
     parser.add_argument("-b","--build", action="store_true",
                         help="build new contract abis")
@@ -101,6 +95,8 @@ if __name__ == '__main__':
 
     # start single-node local testnet
     eosf.reset()
+
+    eosf.create_wallet()
 
     # create master account from which
     # other account can be created
@@ -130,6 +126,12 @@ if __name__ == '__main__':
         boid_stake, BOID_STAKE_CONTRACT_PATH)
     testBoidpower_c = eosf.Contract(
         boid_power, TEST_BOIDPOWER_CONTRACT_PATH)
+
+    # make a build directory if it doesn't exist 
+    repo_build_dir = os.path.join(BOID_STAKE_CONTRACT_PATH, 'build')
+    if not os.path.exists(repo_build_dir):
+        os.mkdir(repo_build_dir)
+        args.build = True  # set to True because nothing has been built yet
 
     # build the token staking contract
     if args.build:
@@ -215,9 +217,9 @@ if __name__ == '__main__':
             'boidpower': '10000'
         }, [acct2])
 
-    print(testBoidpower_c)
-    eosf.stop()
-    sys.exit()
+    # print(type(testBoidpower_c))
+    # eosf.stop()
+    # sys.exit()
 
     # Initialize boid staking contract
     boidStake_c.push_action(
@@ -226,6 +228,7 @@ if __name__ == '__main__':
             'issuer': boid,
             'maximum_supply': '1000000000.0000 BOID'
         }, [boid_stake])
+
     # TODO find way to print total number of boid tokens
     # to determine if this function above is minting more coins
     # or if its alocating pre-existing coins
@@ -234,6 +237,7 @@ if __name__ == '__main__':
         {
             'on_switch': '1',
         }, [boid_stake])
+
     # initstats - reset/setup configuration of contract
     boidStake_c.push_action(
         'initstats',   
@@ -280,9 +284,58 @@ if __name__ == '__main__':
     print(getBalance(boidStake_c.table("accounts", acct1)))
     print(getBalance(boidStake_c.table("accounts", acct2)))
 
+    # print('before')
+    # cleos_command = f'cleos get account {boid_stake.name}'
+    # subprocess.run(cleos_command, shell=True, check=True)
+    print('111111111111111')
+    boid_stake.info()
+    cleos_command = \
+        f'cleos set account permission {boid_stake.name} active \'{{' + \
+        '"threshold": 1,' + \
+        '"keys": [{' + \
+            f'"key": "{boid_stake.active_key.key_public}",' + \
+            '"weight": 1}],' + \
+        '"accounts": [{' + \
+            '"permission":{' + \
+                f'"actor":"{boid_stake.name}",' + \
+                '"permission":"eosio.code"},' + \
+            '"weight":1}]}\' ' + \
+        f'"owner" -p {boid_stake.name}'
+    print(cleos_command)
+
+    # subprocess.run() doc:
+    # https://docs.python.org/3.5/library/subprocess.html#subprocess.run
+    subprocess.run(cleos_command, shell=True, check=True)
+    # print('after')
+    # cleos_command = f'cleos get account {boid_stake.name}'
+    # subprocess.run(cleos_command, shell=True, check=True)
+    # subprocess.run('cleos get accounts', shell=True, check=True)
+    print('222222222222')
+    boid_stake.info()
+    # print('----------------')
+    # print(boid_stake.owner_key)
+    # print(boid_stake.owner_key.key_private)
+    # print('----------------')
+    # print(boid_stake.active_key)
+    # print(boid_stake.active_key.key_private)
+    # # private_keys = eosf.get_wallet().keys()
+    # print('----------------')
+
+    # cleos.WalletKeys()
+    # print('----------------')
+
+
+    # input()
+    # cleos_command = \
+    #     f'cleos set action permission {boid_stake.name} {boid_power.name} setnewbp active'
+    # subprocess.run(cleos_command, shell=True, check=True)
+
+    input()
     boidStake_c.push_action(
         'reqnewbp',
-        {}, [boid_stake])
+        {
+            'contract_were_requesting_bp_from': boid_power
+        }, [boid_stake])
 
     #print(getStakeParams(boidStake_c.table('stakes',boid_stake)))
 
