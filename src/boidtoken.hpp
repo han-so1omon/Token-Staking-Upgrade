@@ -74,7 +74,7 @@ CONTRACT boidtoken : public contract
 
     /** \brief Claim token-staking bonus for specified staked account
      */
-    // ACTION claim(const name _stake_account);
+    ACTION claim(const name _stake_account);
 
     /** \brief Unstake tokens for specified _stake_account
      *
@@ -141,16 +141,16 @@ CONTRACT boidtoken : public contract
 
     const uint8_t   MONTHLY = 1;
     const uint8_t   QUARTERLY = 2;
-/*
     // testing speeds (measured in seconds)
-    const uint32_t  WEEK_WAIT    = (1);
+    const uint32_t  WEEK_WAIT    = (1 * 7);
     const uint32_t  MONTH_WAIT   = (1 * 30);
     const uint32_t  QUARTER_WAIT = (1 * 30 * 4);
-*/
+/*
     // actual speeds (measured in seconds)
     const uint32_t  WEEK_WAIT    = (7  * 24 * 60 * 60);
     const uint32_t  MONTH_WAIT   = (30 * 24 * 60 * 60);
     const uint32_t  QUARTER_WAIT = (90 * 24 * 60 * 60);
+*/
 
 
     TABLE config {
@@ -169,7 +169,8 @@ CONTRACT boidtoken : public contract
         float           bp_bonus_divisor;
         float           bp_bonus_max;
         float           min_stake;
-        uint32_t        payout_date;
+        uint32_t        start_payout_date;
+        uint8_t         payout_week;
 
         uint64_t    primary_key() const { return config_id; }
 
@@ -177,7 +178,7 @@ CONTRACT boidtoken : public contract
           (config_id)(stakebreak)(bonus)(active_accounts)
           (total_staked)(month_stake_roi)(month_multiplierx100)
           (bp_bonus_ratio)(bp_bonus_divisor)(bp_bonus_max)
-          (min_stake)(payout_date));
+          (min_stake)(start_payout_date)(payout_week));
     };
 
     typedef eosio::multi_index<"configs"_n, config> config_table;
@@ -207,11 +208,12 @@ CONTRACT boidtoken : public contract
     TABLE stakerow {
         name            stake_account;
         asset           staked;
+        uint8_t         payout_week;
         bool            auto_stake;  // toggle if we want to unstake stake_account at end of season
 
         uint64_t        primary_key () const { return stake_account.value; }
 
-        EOSLIB_SERIALIZE (stakerow, (stake_account)(staked)(auto_stake));
+        EOSLIB_SERIALIZE (stakerow, (stake_account)(staked)(payout_week)(auto_stake));
     };
 
     typedef eosio::multi_index<"stakes"_n, stakerow> staketable;
@@ -268,14 +270,13 @@ float boidtoken::get_boidpower(name owner) const
   return 0;
 }
 
-//EOSIO_DISPATCH(boidtoken, (create)(issue)(transfer)(stake)(claim)(unstake)(initstats)(setnewbp)(setparams))
 EOSIO_DISPATCH(boidtoken,
     (create)
     (issue)
     (transfer)
     (stakebreak)
     (stake)
-    // (claim)
+    (claim)
     (unstake)
     (initstats)
     (setnewbp)

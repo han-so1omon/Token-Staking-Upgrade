@@ -132,7 +132,8 @@ void boidtoken::stakebreak(uint8_t on_switch)
 
             // set payout_date at the beginning of the season
             if (on_switch != 0) {
-                c.payout_date = now() + WEEK_WAIT;
+                c.start_payout_date = now();
+                c.payout_week = 0;
             }
         });
     } else {
@@ -141,7 +142,8 @@ void boidtoken::stakebreak(uint8_t on_switch)
 
             // set payout_date at the beginning of the season
             if (on_switch != 0) {
-                c.payout_date = now() + WEEK_WAIT;
+                c.start_payout_date = now();
+                c.payout_week = 0;
             }
         });
     }
@@ -203,6 +205,7 @@ void boidtoken::stake(name _stake_account, asset _staked)
     s_t.emplace(_stake_account, [&](auto &s) {
         s.stake_account = _stake_account;
         s.staked = _staked;
+        s.payout_week = 0; // TODO change this if staking mid-season
         s.auto_stake = false;
     });
     c_t.modify(c_itr, _self, [&](auto &c) {
@@ -226,15 +229,12 @@ void boidtoken::sendmessage(name acct, string memo)
 
 /* Claim token-staking bonus for specified account
  */
-/*
 void boidtoken::claim(name _stake_account)
 {
     // print("claim\n");
     config_table c_t(_self, _self.value);
     auto c_itr = c_t.find(0);
     eosio_assert(c_itr->stakebreak == 0, "currently in stake break, cannot claim during stake break, only during season");
-
-    eosio_assert(c_itr->payout_date <= now(), "You are current on all available claims");
 
     auto sym = c_itr->bonus.symbol;
     stats statstable(_self, sym.code().raw());
@@ -245,6 +245,25 @@ void boidtoken::claim(name _stake_account)
 
     staketable s_t(_self, _self.value);
     auto s_itr = s_t.find(_stake_account.value);
+
+    // Calculate number of payouts to make
+    c_t.modify(c_itr, _self, [&](auto &c) {
+        c.payout_week = ((now() - c.start_payout_date)/WEEK_WAIT);
+    });
+    // Check that stake account payout_week has been reset after
+    // previous stake period. This works, because stake_account
+    // payout_week is not incrementedon update, it is assigned to be
+    // equal to contract payout_week
+    if (s_itr->payout_week > c_itr->payout_week) {
+        s_t.modify(s_itr, _self, [&](auto &s) {
+            s.payout_week = 0;
+        });
+    }
+    uint8_t num_payouts = c_itr->payout_week - s_itr->payout_week;
+    eosio_assert(num_payouts > 0, "up to date on BOID stake bonus claims");
+    s_t.modify(s_itr, _self, [&](auto &s) {
+        s.payout_week = c_itr->payout_week;
+    });
 
     uint8_t token_precision = sym.precision();
     float boidpower, staked_tokens, boidpower_bonus_ratio;
@@ -281,7 +300,7 @@ void boidtoken::claim(name _stake_account)
 
     }
     payout = asset{
-        static_cast<int64_t>(payout_tokens * pow(10, token_precision)),
+        static_cast<int64_t>(num_payouts * payout_tokens * pow(10, token_precision)),
         symbol("BOID", 4)
     };
     // issue(_stake_account, payout, "stake payout");
@@ -291,10 +310,7 @@ void boidtoken::claim(name _stake_account)
         "issue"_n,
         std::make_tuple(_stake_account, payout, std::string("stake payout"))
     ).send();
-    c_t.modify(c_itr, _self, [&](auto &c) {
-        c.payout_date += WEEK_WAIT;
-    });
-}*/
+}
 
 /* Unstake tokens for specified _stake_account
  *  - Unstake tokens for specified _stake_account
@@ -327,6 +343,9 @@ void boidtoken::unstake(name _stake_account)
     //    true);
 
     // erase staked account from stake table
+    s_t.modify(s_itr, _self, [&](auto &s) {
+        s.payout_week = 0;
+    });
     s_t.erase(s_itr);
 }
 

@@ -1,8 +1,10 @@
 import eosfactory.eosf as eosf
+import eosfactory
 import sys, os
 import json
 import argparse
 import subprocess
+import string
 import time
 import numpy as np
 import pandas as pd
@@ -11,16 +13,20 @@ pd.set_option('display.max_rows',10)
 pd.set_option('display.float_format', '{:.3f}'.format)
 #pd.options.display.float_format = '${:,.2f}'.format
 
-################################# Test variables #########################################
-
-TEST_DURATION   = 8  # measured in weeks
-INIT_BOIDTOKENS = 10000000  # initial boid tokens given to each account (must be less than 1/4th of max supply (1000000000 BOID))
-INIT_BOIDPOWER  = 1000000.0  # 2300.5  # initial boid power given to each account
-INIT_BOIDSTAKE  = 10000000.0  # initial boid tokens staked by each account (must be <= INIT_BOIDTOKENS)
-
 ############# Must also modify in boidtoken.hpp ##############
 # TESTING Speeds Only
-WEEK_WAIT    = 1
+WEEK_WAIT    = 7 # seconds
+
+################################# Test variables #########################################
+
+#NUM_ACCOUNTS        = 100
+NUM_ACCOUNTS        = 2
+TEST_DURATION       = [1,8,10,20]*WEEK_WAIT
+MAX_BOID_SUPPLY     = 1e12
+INIT_BOIDTOKENS     = np.linspace(1,10e9,NUM_ACCOUNTS)
+INIT_BOIDPOWER      = np.linspace(0,10e3,NUM_ACCOUNTS)
+INIT_BOIDSTAKE      = INIT_BOIDTOKENS/10
+
 
 ##############################################################
 
@@ -31,8 +37,30 @@ BOID_TOKEN_CONTRACT_PATH = \
              '..'))
 
 ##########################################################################################
+digs = string.digits + string.ascii_letters
+def eos_name_digits(x):
+    if x < 0:
+        sign = -1
+    elif x == 0:
+        return digs[0 + 1]
+    else:
+        sign = 1
 
+    x *= sign
+    digits = []
 
+    while x:
+        digits.append(digs[int(x % 5) + 1])
+        x = int(x / 5)
+
+    if sign < 0:
+        digits.append('-')
+
+    digits.reverse()
+
+    return ''.join(digits)
+
+##########################################################################################
 
 # @param account  The account to set/delete a permission authority for
 # @param permission  The permission name to set/delete an authority for
@@ -93,13 +121,13 @@ def claim(acct):
         }, permission = [boid_token] #, forceUnique=1)
     )
 
-def unstake(acct, acct_perm, memo):
+def unstake(acct, acct_permission, memo):
     boidToken_c.push_action(
         'unstake',
         {
             '_stake_account': acct,
             'memo': memo
-        }, permission=[acct_perm]
+        }, permission=[acct_permission]
     )
 
 def initStaking():
@@ -113,7 +141,7 @@ def stakebreak(on_switch):
     boidToken_c.push_action(  # stakebreak - activate/deactivate staking for users
         'stakebreak',
         {
-            'on_switch': on_switch,
+            'on_switch': on_switch
         }, [boid_token])
 
 def setBoidpower(acct, bp):
@@ -123,6 +151,14 @@ def setBoidpower(acct, bp):
             'acct': acct,
             'boidpower': bp
         }, [boid_token, acct])
+
+def setAutostake(acct, on_switch):
+    boidToken_c.push_action(
+        'setautostake',
+        {
+            '_stake_account': acct,
+            'on_switch': on_switch 
+        }, [acct])
 
 def getBalance(x):
     if len(x.json['rows']) > 0:
@@ -220,10 +256,14 @@ if __name__ == '__main__':
     # Create contract owner account: boid_token
     eosf.create_account('boid_token', master, account_name='boid.token')
 
-    # acct1 does monthly stakes and acct2 does quarterly stakes
-    eosf.create_account('acct1',      master, account_name='account1')
-    eosf.create_account('acct2',      master, account_name='account2')
-    accts = [acct1, acct2]
+    accts = []
+    for i in range(NUM_ACCOUNTS):
+        eosf.create_account(
+            'acct{}'.format(i),
+            master,
+            account_name='account{}'.format(eos_name_digits(i))
+        )
+        accts.append(eval('acct{}'.format(i)))
 
     # data frames to hold account state
     acct_df_columns = [
@@ -257,29 +297,102 @@ if __name__ == '__main__':
         'create',
         {
             'issuer': boid_token,
-            'maximum_supply': '1000000000.0000 BOID'
+            'maximum_supply': '{:.4f} BOID'.format(MAX_BOID_SUPPLY)
         }, [boid_token])
 
     # issue tokens to accts
-    for acct in accts:
+    for i in range(NUM_ACCOUNTS):
         boidToken_c.push_action(
             'issue',
             {
-                'to': acct,
-                'quantity': '%.4f BOID' % INIT_BOIDTOKENS,
+                'to': accts[i],
+                'quantity': '%.4f BOID' % INIT_BOIDTOKENS[i],
                 'memo': 'memo'
             }, [boid_token])
+        setBoidpower(accts[i], INIT_BOIDPOWER[i])
 
-    for acct in accts:  # set bp for accounts
-        setBoidpower(acct, INIT_BOIDPOWER)
-    initStaking()  # setup
 #    # test setters
 #    boidToken_c.push_action('setmonth', {'month_stake_roi':'1.2'}, [boid_token])
 #    boidToken_c.push_action('setbpratio', {'bp_bonus_ratio':'0.0002'}, [boid_token])
 #    boidToken_c.push_action('setbpmult', {'bp_bonus_multiplier':'0.000002'}, [boid_token])
 #    boidToken_c.push_action('setbpmax', {'bp_bonus_max':'55000.0'}, [boid_token])
 #    boidToken_c.push_action('setminstake', {'min_stake':'5000.0'}, [boid_token])
-    
+
+    # TEST: Stake less than minimum amount
+    try:
+        initStaking()
+        stake(accts[0], '%.4f BOID' % INIT_BOIDSTAKE[0], 'memo')
+        setBoidpower(accts[0], 0)
+        setAutostake(accts[0], 0)
+        stakebreak(0)
+        # run test over time
+        dfs = get_state(boidToken_c, boid_token, accts, dfs)
+        for t in range(TEST_DURATION[0]):
+            time.sleep(WEEK_WAIT)
+            print('\n/-------------------- week %d --------------------------------\\' % (t+1))
+            claim(accts[0])
+            dfs = get_state(boidToken_c, boid_token, [accts[0]], dfs)
+            print('\\--------------------- week %d ---------------------------------/' % (t+1))
+        dfs = get_stake_roi(dfs)
+        dfs = get_total_roi(dfs)
+
+        # end season
+        stakebreak('1')
+
+        unstake(accts[0], boid_token, memo)
+    except eosfactory.core.errors.Error as e:
+        print(e)
+
+    # TEST: Stake 1 account, valid amount, no boidpower
+    #initStaking()
+    stake(accts[1], '%.4f BOID' % INIT_BOIDSTAKE[1], 'memo')
+    setBoidpower(accts[1], 0)
+    setAutostake(accts[1], 0)
+    stakebreak(0)
+    # run test over time
+    dfs = get_state(boidToken_c, boid_token, accts, dfs)
+    for t in range(TEST_DURATION[0]):
+        time.sleep(WEEK_WAIT)
+        print('\n/-------------------- week %d --------------------------------\\' % (t+1))
+        claim(accts[1])
+        dfs = get_state(boidToken_c, boid_token, [accts[1]], dfs)
+        print('\\--------------------- week %d ---------------------------------/' % (t+1))
+    dfs = get_stake_roi(dfs)
+    dfs = get_total_roi(dfs)
+
+    unstake(accts[1], boid_token, 'memo')
+
+    # end season
+    stakebreak('1')
+
+    # TEST: Stake multiple accounts, no boidpower
+
+    # TEST: Stake 1 account, high boidpower
+
+    # TEST: Stake 1 account, low boidpower
+
+    # TEST: Stake multiple accounts, varying boidpower
+
+    # TEST: 1 account with all available BOID
+
+    # TEST: Multiple accounts where BOID supply is gone
+
+    # TEST: Attempt stake during bonus period
+
+    # TEST: Attempt unstake during bonus period
+
+    # TEST: Attempt unstake during stake break
+
+    # TEST: Stake 1 account with varying boidpower
+
+    # TEST: Claim early
+
+    # TEST: Claim late
+
+    # TEST: Attempt transfer staked tokens
+
+
+    '''
     # stake boid tokens
     stake(acct1, '%.4f BOID' % INIT_BOIDSTAKE, "memo")
     boidToken_c.push_action(
@@ -296,6 +409,7 @@ if __name__ == '__main__':
     stake(acct2, '%.4f BOID' % INIT_BOIDSTAKE, "memo3")
 
     stakebreak('0')  # disable staking, stakebreak is over
+
 
 #     # run test over time
 #     dfs = get_state(boidToken_c, boid_token, accts, dfs)
@@ -319,6 +433,7 @@ if __name__ == '__main__':
 
     # end season
     stakebreak('1')
+    '''
 
     # # output test results, and save them to csv files if prompted
     # print_acct_dfs(dfs)
