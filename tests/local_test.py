@@ -20,7 +20,7 @@ WEEK_WAIT    = 7 # seconds
 ################################# Test variables #########################################
 
 #NUM_ACCOUNTS        = 100
-NUM_ACCOUNTS        = 2
+NUM_ACCOUNTS        = 10
 TEST_DURATION       = [1,8,10,20]*WEEK_WAIT
 MAX_BOID_SUPPLY     = 1e12
 INIT_BOIDTOKENS     = np.linspace(1,10e9,NUM_ACCOUNTS)
@@ -192,11 +192,12 @@ def get_state(contract, contract_owner, accts, dfs, p=False):
         staked_tokens = float(stake_params[account]['staked'].split()[0]) \
             if account in stake_params.keys() else 0.0
         acct_bp = float(bps[account]) if account in bps.keys() else 0.0
+        print(account_num)
         dfs[account_num] = dfs[account_num].append({
             'boid_power': acct_bp,
             'staked_boid_tokens': staked_tokens,
-            'unstaked_boid_tokens': acct_balance,
-            'total_boid_tokens': acct_balance + staked_tokens
+            'unstaked_boid_tokens': acct_balance - staked_tokens,
+            'total_boid_tokens': acct_balance
         }, ignore_index=True)
 
         if p: print('%s_balance = %f' % (acct, acct_balance))
@@ -271,9 +272,6 @@ if __name__ == '__main__':
         'staked_boid_tokens',
         'unstaked_boid_tokens',
         'total_boid_tokens']
-    dfs = [
-        pd.DataFrame(columns=acct_df_columns),
-        pd.DataFrame(columns=acct_df_columns)]
 
     # make build directory if it does not exist
     build_dir = os.path.join(BOID_TOKEN_CONTRACT_PATH, 'build')
@@ -322,40 +320,22 @@ if __name__ == '__main__':
     try:
         initStaking()
         stake(accts[0], '%.4f BOID' % INIT_BOIDSTAKE[0], 'memo')
-        setBoidpower(accts[0], 0)
-        setAutostake(accts[0], 0)
-        stakebreak(0)
-        # run test over time
-        dfs = get_state(boidToken_c, boid_token, accts, dfs)
-        for t in range(TEST_DURATION[0]):
-            time.sleep(WEEK_WAIT)
-            print('\n/-------------------- week %d --------------------------------\\' % (t+1))
-            claim(accts[0])
-            dfs = get_state(boidToken_c, boid_token, [accts[0]], dfs)
-            print('\\--------------------- week %d ---------------------------------/' % (t+1))
-        dfs = get_stake_roi(dfs)
-        dfs = get_total_roi(dfs)
-
-        # end season
-        stakebreak('1')
-
-        unstake(accts[0], boid_token, memo)
     except eosfactory.core.errors.Error as e:
         print(e)
 
     # TEST: Stake 1 account, valid amount, no boidpower
-    #initStaking()
+    dfs = [pd.DataFrame(columns=acct_df_columns)]
     stake(accts[1], '%.4f BOID' % INIT_BOIDSTAKE[1], 'memo')
     setBoidpower(accts[1], 0)
     setAutostake(accts[1], 0)
     stakebreak(0)
     # run test over time
-    dfs = get_state(boidToken_c, boid_token, accts, dfs)
+    dfs = get_state(boidToken_c, boid_token, [accts[1]], dfs, True)
     for t in range(TEST_DURATION[0]):
         time.sleep(WEEK_WAIT)
         print('\n/-------------------- week %d --------------------------------\\' % (t+1))
         claim(accts[1])
-        dfs = get_state(boidToken_c, boid_token, [accts[1]], dfs)
+        dfs = get_state(boidToken_c, boid_token, [accts[1]], dfs, True)
         print('\\--------------------- week %d ---------------------------------/' % (t+1))
     dfs = get_stake_roi(dfs)
     dfs = get_total_roi(dfs)
@@ -366,6 +346,31 @@ if __name__ == '__main__':
     stakebreak('1')
 
     # TEST: Stake multiple accounts, no boidpower
+    dfs = []
+    for i in range(len(accts)-1):
+        stake(accts[i+1], '%.4f BOID' % INIT_BOIDSTAKE[i+1], 'memo')
+        setBoidpower(accts[i+1], 0)
+        setAutostake(accts[i+1], 0)
+        dfs.append(pd.DataFrame(columns=acct_df_columns))
+
+    stakebreak(0)
+    # run test over time
+    dfs = get_state(boidToken_c, boid_token, accts[1:], dfs)
+    for t in range(TEST_DURATION[0]):
+        time.sleep(WEEK_WAIT)
+        print('\n/-------------------- week %d --------------------------------\\' % (t+1))
+        for i in range(len(accts)-1):
+            claim(accts[i+1])
+            dfs = get_state(boidToken_c, boid_token, [accts[i+1]], dfs)
+        print('\\--------------------- week %d ---------------------------------/' % (t+1))
+    dfs = get_stake_roi(dfs)
+    dfs = get_total_roi(dfs)
+
+    for i in range(len(accts)-1):
+        unstake(accts[i+1], boid_token, 'memo')
+
+    # end season
+    stakebreak('1')
 
     # TEST: Stake 1 account, high boidpower
 
