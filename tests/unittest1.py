@@ -124,6 +124,15 @@ transferPermission = lambda x,y:\
         ]\
     }}\''.format(x,y)
 
+def issue(contract_acct, issuer_acct, to_acct, amount, memo):
+    contract_acct.push_action(
+        'issue',
+        {
+            'to': to_acct,
+            'quantity': '%.4f BOID' % amount,
+            'memo': memo 
+        }, [issuer_acct])
+
 def stake(contract_acct, acct, amount, memo):
     contract_acct.push_action(
         'stake',
@@ -181,11 +190,57 @@ def setAutostake(contract_acct, acct, on_switch):
             'on_switch': on_switch 
         }, [acct])
 
-def getBalance(x):
-    if len(x.json['rows']) > 0:
-        return float(x.json['rows'][0]['balance'].split()[0])
+def transfer(contract_acct, from_acct, to_acct, amount, memo):
+    contract_acct.push_action(
+        'transfer',
+        {
+            'from': from_acct,
+            'to': to_acct,
+            'quantity': amount,
+            'memo': memo
+        }, permission=[from_acct]
+    )
+
+def setTokenAmount(contract_acct, set_acct, store_acct,
+        req_balance, issuer=False):
+    if req_balance < 0:
+        raise ValueError('invalid requested balance: {} < 0'.format(
+            req_balance))
+    currBalance = getBalance(contract_acct.table("accounts",set_acct))
+    if currBalance is None or currBalance == 0:
+        if not issuer:
+            raise Exception(
+                'must create account {} before token transfer'.format(
+                    set_acct.name))
+    xfer_amount = req_balance - currBalance
+    if xfer_amount == 0:
+        return
+    elif xfer_amount < 0:
+        xfer_amount *= -1
+        from_acct = set_acct
+        to_acct = store_acct
     else:
-        return 0
+        from_acct = store_acct
+        to_acct = set_acct
+
+    if not issuer or from_acct.name == set_acct.name:
+        if getBalance(
+                contract_acct.table("accounts",from_acct)) < xfer_amount:
+            raise ValueError(
+                'not enough tokens in supplier account {}'.format(
+                    from_acct.name))
+        transfer(contract_acct, from_acct, to_acct, xfer_amount, 'memo')
+    elif issuer and from_acct.name == store_acct.name:
+        issue(contract_acct,store_acct,to_acct,xfer_amount,'memo')
+
+def getBalance(x):
+    ret = 0
+    if len(x.json['rows']) > 0:
+        try:
+            ret = float(x.json['rows'][0]['balance'].split()[0])
+        except AttributeError as e:
+            pass
+    return ret
 
 def getStakeParams(x):
     ret = {}
@@ -248,7 +303,6 @@ def print_acct_dfs(dfs):
         print(df)
         print('---------------------------------------------------------------------------------------------------')
 
-
 ##########################################################################################
 
 test_accts = []
@@ -289,6 +343,9 @@ class Test(unittest.TestCase):
         testnet.verify_production()
                 
         eosf.create_master_account("master", testnet)
+
+        if arg_buy_ram > 0:
+            master.buy_ram(arg_buy_ram)
 
         # Create contract owner account: boid_token
         eosf.create_account('boid_token', master, account_name='boidtoken123',
@@ -340,20 +397,42 @@ class Test(unittest.TestCase):
                 ''')
                 raise Error(str(e))
 
-            #TODO unstake if accounts are in cache
+            stake_params = getStakeParams(
+                    contract.table('stakes',boid_token))
+            stakebreak(boid_token, boid_token, '1')
+            for acct in test_accts:
+                if acct.name in stake_params and\
+                   float(
+                    stake_params[acct.name]['staked'].split()[0]) > 0:
+                    unstake(
+                        boid_token,
+                        acct,
+                        acct,
+                        'memo'
+                    )
+            # Sleep to wait for next block to clear so we don't
+            # accidentally have duplicate transactions
+            time.sleep(1)
 
     def setUp(self):
         pass
-
 
     def test_min_stake(self):
         eosf.COMMENT('''
         Staking less than minimum stake. This should fail. 
         ''')
 
+        setTokenAmount(boid_token, test_accts[0], boid_token,
+                5000, issuer=True)
         try:
             initStaking(boid_token, boid_token)
-            stake(boid_token, test_accts[0], '%.4f BOID' % INIT_BOIDSTAKE[0], 'memo')
+            stake(
+                boid_token,
+                test_accts[0],
+                '%.4f BOID' % getBalance(
+                    boid_token.table("accounts",test_accts[0])),
+                'memo'
+            )
         except eosfactory.core.errors.Error as e:
             print(e)
 
@@ -364,8 +443,16 @@ class Test(unittest.TestCase):
         Staking with single account. 
         ''')
 
+        setTokenAmount(boid_token, test_accts[1], boid_token,
+                100000, issuer=True)
         stakebreak(boid_token, boid_token, '1')
-        stake(boid_token, test_accts[1], '%.4f BOID' % INIT_BOIDSTAKE[1], 'memo')
+        stake(
+            boid_token,
+            test_accts[1],
+            '%.4f BOID' % getBalance(
+                boid_token.table("accounts",test_accts[1])),
+            'memo'
+        )
         setBoidpower(boid_token, boid_token, test_accts[1], 0)
         setAutostake(boid_token, test_accts[1], 0)
         stakebreak(boid_token, boid_token, '0')
@@ -395,6 +482,7 @@ class Test(unittest.TestCase):
 testnet     = None
 arg_build   = False
 arg_save    = False
+arg_buy_ram = 0
 
 if __name__ == '__main__':
 
@@ -426,6 +514,10 @@ if __name__ == '__main__':
         action="store_true",
         help="build new contract ABIs")
 
+    parser.add_argument(
+        "--buy_ram",
+        help="buy more ram for master account")
+
     args = parser.parse_args()
 
     testnet = eosf.get_testnet(args.alias, args.testnet, reset=args.reset)
@@ -439,5 +531,8 @@ if __name__ == '__main__':
 
     if args.save:
         arg_save = True
+
+    if args.buy_ram and int(args.buy_ram.split()[0]) > 0:
+        arg_buy_ram = int(args.buy_ram.split()[0])
 
     unittest.main(argv=[sys.argv[0]])
