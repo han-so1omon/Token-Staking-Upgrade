@@ -1,0 +1,16 @@
+{
+  "main": "src/boidtoken.cpp",
+  "contract": "boidtoken",
+  "include": "",
+  "cdt": "",
+  "output": "./build/boidtoken.wasm",
+  "scripts": {
+    "build": ""
+  },
+  "deploy": {
+    "mainnet": "",
+    "kylin": "",
+    "jungle": "",
+    "local": ""
+  }
+}
